@@ -42,6 +42,8 @@ public class AtomEntry extends AtomCommonAttributes implements Item {
   public final AtomFeed source;
   @Nullable
   public final AtomText rights;
+  @Nullable
+  public final MediaItem media;
 
   @NonNull
   static AtomEntry read(XmlPullParser parser)
@@ -60,10 +62,12 @@ public class AtomEntry extends AtomCommonAttributes implements Item {
     String id = null;
     AtomDate updated = null;
     AtomDate published = null;
+    MediaItem.MediaItemBuilder mediaBuilder = null;
 
     AtomCommonAttributes atomCommonAttributes = new AtomCommonAttributes(parser);
     while (parser.nextTag() == XmlPullParser.START_TAG) {
-      if (Utils.ATOM_NAMESPACE.equalsIgnoreCase(parser.getNamespace())) {
+      String namespace = parser.getNamespace();
+      if (Utils.ATOM_NAMESPACE.equalsIgnoreCase(namespace)) {
         switch (parser.getName()) {
           case AtomLink.XML_TAG:
             links.add(AtomLink.read(parser));
@@ -105,6 +109,14 @@ public class AtomEntry extends AtomCommonAttributes implements Item {
             Log.w(TAG, "Unknown tag in Atom entry " + parser.getName());
             Utils.skipTag(parser);
         }
+      } else if (Utils.MEDIA_NAMESPACE.equalsIgnoreCase(namespace)) {
+        if (mediaBuilder == null) {
+          mediaBuilder = new MediaItem.MediaItemBuilder();
+        }
+        if (!mediaBuilder.parseTag(parser)) {
+          Log.w(TAG, "Unknown mrss tag on item level");
+          Utils.skipTag(parser);
+        }
       } else {
         Log.w(TAG, "Unknown namespace in Atom item " + parser.getNamespace());
         Utils.skipTag(parser);
@@ -123,7 +135,8 @@ public class AtomEntry extends AtomCommonAttributes implements Item {
 
     return new AtomEntry(
         atomCommonAttributes, Utils.nonNullUri(id), title, updated, authors, content, links,
-        summary, categories, contributors, published, source, rights);
+        summary, categories, contributors, published, source, rights,
+        mediaBuilder == null ? null : mediaBuilder.build());
   }
 
   public AtomEntry(@Nullable AtomCommonAttributes atomCommonAttributes, @NonNull URI id,
@@ -132,7 +145,8 @@ public class AtomEntry extends AtomCommonAttributes implements Item {
                    @NonNull List<AtomLink> links, @Nullable AtomText summary,
                    @NonNull List<AtomCategory> categories, @NonNull List<AtomPerson> contributors,
                    @Nullable AtomDate published, @Nullable AtomFeed source,
-                   @Nullable AtomText rights) {
+                   @Nullable AtomText rights,
+                   @Nullable MediaItem media) {
     super(atomCommonAttributes);
     this.id = id;
     this.title = title;
@@ -146,6 +160,7 @@ public class AtomEntry extends AtomCommonAttributes implements Item {
     this.published = published;
     this.source = source;
     this.rights = rights;
+    this.media = media;
   }
 
   @Nullable
@@ -197,7 +212,16 @@ public class AtomEntry extends AtomCommonAttributes implements Item {
   @Nullable
   @Override
   public String getDescription() {
-    return summary == null ? (content == null ? null : content.value) : summary.value;
+    if (summary != null) {
+      return summary.value;
+    }
+    if (content != null) {
+      return content.value;
+    }
+    if (media != null && media.description != null) {
+      return media.description.value;
+    }
+    return null;
   }
 
   @Nullable
@@ -209,17 +233,30 @@ public class AtomEntry extends AtomCommonAttributes implements Item {
         return link.getLink();
       }
     }
+    if (media != null && !media.thumbnails.isEmpty()) {
+      return media.thumbnails.get(0).url.toString();
+    }
     return null;
   }
 
   @Nullable
   @Override
   public String getAuthor() {
-    if (authors.isEmpty()) {
-      return contributors.isEmpty() ? null : contributors.get(0).name;
-    } else {
+    if (!authors.isEmpty()) {
       return authors.get(0).name;
     }
+    if (!contributors.isEmpty()) {
+      return contributors.get(0).name;
+    }
+    if (media != null && !media.credits.isEmpty()) {
+      for (MediaCredit credit : media.credits) {
+        if ("author".equalsIgnoreCase(credit.role)) {
+          return credit.value;
+        }
+      }
+      return media.credits.get(0).value;
+    }
+    return null;
   }
 
   @NonNull
