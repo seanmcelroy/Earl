@@ -21,7 +21,7 @@ import java.util.Date;
 import java.util.Locale;
 import java.util.TimeZone;
 
-final class Utils {
+final public class Utils {
   static final String ATOM_NAMESPACE = "http://www.w3.org/2005/Atom";
   static final String MEDIA_NAMESPACE = "http://search.yahoo.com/mrss/";
   static final String ITUNES_NAMESPACE = "http://www.itunes.com/dtds/podcast-1.0.dtd";
@@ -29,19 +29,19 @@ final class Utils {
 
   private static final String TAG = "Earl.Utils";
   private static final DateFormat rfc822DateTimeFormat = new SimpleDateFormat(
-      "EEE, dd MMM yyyy HH:mm:ss Z", Locale.ENGLISH);
+          "EEE, dd MMM yyyy HH:mm:ss Z", Locale.ENGLISH);
   private static final DateFormat iso8601DateTimeFormat = new SimpleDateFormat(
-      "yyyy-MM-dd'T'HH:mm:ss.SSSz", Locale.ENGLISH);
+          "yyyy-MM-dd'T'HH:mm:ss.SSSz", Locale.ENGLISH);
   private static final DateFormat RFC3339Tz = new SimpleDateFormat(
-      "yyyy-MM-dd'T'HH:mm:ssZ", Locale.ENGLISH);
+          "yyyy-MM-dd'T'HH:mm:ssZ", Locale.ENGLISH);
   private static final DateFormat RFC3339TzMs = new SimpleDateFormat(
-      "yyyy-MM-dd'T'HH:mm:ss.SSSSSSZ", Locale.ENGLISH);
+          "yyyy-MM-dd'T'HH:mm:ss.SSSSSSZ", Locale.ENGLISH);
   private static final DateFormat[] itunesDurationFormats = {
-      new SimpleDateFormat("HH:mm:ss", Locale.ENGLISH),
-      new SimpleDateFormat("H:mm:ss", Locale.ENGLISH),
-      new SimpleDateFormat("mm:ss", Locale.ENGLISH),
-      new SimpleDateFormat("m:ss", Locale.ENGLISH),
-      };
+          new SimpleDateFormat("HH:mm:ss", Locale.ENGLISH),
+          new SimpleDateFormat("H:mm:ss", Locale.ENGLISH),
+          new SimpleDateFormat("mm:ss", Locale.ENGLISH),
+          new SimpleDateFormat("m:ss", Locale.ENGLISH),
+  };
 
   static {
     RFC3339TzMs.setLenient(true);
@@ -53,7 +53,8 @@ final class Utils {
   }
 
 
-  private Utils() {}
+  private Utils() {
+  }
 
   /**
    * One single function to parse all types of date strings. Due to the non-standard nature of
@@ -64,7 +65,7 @@ final class Utils {
    * @return parsed date on success, NULL otherwise
    */
   @Nullable
-  static Date parseDate(@NonNull String dateString) {
+  public static Date parseDate(@NonNull String dateString) {
     Date date = parseRFC822Date(dateString);
     if (null == date) {
       date = parseISO8601Date(dateString);
@@ -83,7 +84,25 @@ final class Utils {
     try {
       return rfc822DateTimeFormat.parse(dateString);
     } catch (ParseException ignored) {
-      return null;
+
+      // If the time ends with an offset instead of a Z, handle it.
+      char timezoneSign = dateString.contains("+") ? '+' : '-';
+
+      if (dateString.endsWith("+0000")) {
+        dateString = dateString.replace("+0000", "+00:00");
+      }
+
+      //step one, split off the timezone.
+      final int lastTimezoneSignIndex = dateString.lastIndexOf(timezoneSign);
+      if (lastTimezoneSignIndex == -1) {
+        return null;
+      }
+      final String firstPart = dateString.substring(0, lastTimezoneSignIndex);
+      try {
+        return rfc822DateTimeFormat.parse(firstPart);
+      } catch (ParseException ignored2) {
+        return null;
+      }
     }
   }
 
@@ -100,9 +119,9 @@ final class Utils {
    * Patches the specified date due to non-standardization when it comes to ISO 8601. In
    * particular, this will normalize the string so that our {@link DateFormat} could work properly
    * and parse the date. We need this to support pre-1.7 Java versions.
-   *
+   * <p>
    * The function supports these formats:
-   *
+   * <p>
    * 2016-01-01T01:01:01.001Z
    * 2016-01-01T0101:01.001Z
    * 2016-01-01T01:01:01.001+01:01
@@ -146,13 +165,22 @@ final class Utils {
       } else {
         char timezoneSign = string.contains("+") ? '+' : '-';
 
+        if (string.endsWith("+0000")) {
+          string = string.replace("+0000", "+00:00");
+        }
+
         //step one, split off the timezone.
-        String firstPart = string.substring(0, string.lastIndexOf(timezoneSign));
-        String secondPart = string.substring(string.lastIndexOf(timezoneSign));
+        final int lastTimezoneSignIndex = string.lastIndexOf(timezoneSign);
+        if (lastTimezoneSignIndex == -1) {
+          Log.w(TAG, String.format("parseRFC3339Date: Unable to properly parse '%s': No timezone indicator", string));
+        }
+        final String firstPart = string.substring(0, lastTimezoneSignIndex);
+        String secondPart = string.substring(lastTimezoneSignIndex);
 
         //step two, remove the colon from the timezone offset
-        secondPart = secondPart.substring(0, secondPart.indexOf(':')) + secondPart
-            .substring(secondPart.indexOf(':') + 1);
+        final int secondPartColon = secondPart.indexOf(':');
+        if (secondPartColon > -1)
+          secondPart = secondPart.substring(0, secondPartColon) + secondPart.substring(secondPartColon + 1);
         string = firstPart + secondPart;
       }
 
@@ -161,6 +189,9 @@ final class Utils {
       } catch (ParseException ignored) { // try again with optional decimals
         return RFC3339TzMs.parse(string);
       }
+    } catch (StringIndexOutOfBoundsException oob) {
+      Log.e(TAG, String.format("parseRFC3339Date: Unable to properly parse '%s': %s", string, oob.getMessage()), oob);
+      return null;
     } catch (ParseException ignored) {
       return null;
     }

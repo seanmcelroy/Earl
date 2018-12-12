@@ -264,7 +264,7 @@ public class AtomEntry extends AtomCommonAttributes implements Item {
   public List<? extends Enclosure> getEnclosures() {
     List<Enclosure> result = new LinkedList<>();
     for (AtomLink link : links) {
-      if (link.rel != null && "enclosure".equals(link.rel)) {
+      if ("enclosure".equals(link.rel)) {
         result.add(link);
       }
     }

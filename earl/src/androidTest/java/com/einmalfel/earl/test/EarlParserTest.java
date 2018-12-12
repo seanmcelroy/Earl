@@ -58,12 +58,9 @@ public class EarlParserTest {
       throws IOException, XmlPullParserException, DataFormatException {
     InputStream sampleXmlStream = getContext().getAssets().open(sampleXmlAsset);
     InputStream referenceJsonStream = getContext().getAssets().open(referenceJsonAsset);
-    Scanner scanner = new Scanner(referenceJsonStream, "UTF-8");
-    try {
+    try (Scanner scanner = new Scanner(referenceJsonStream, "UTF-8")) {
       assertThat(objectToJson(EarlParser.parseOrThrow(sampleXmlStream, 0)),
-                 is(scanner.useDelimiter("\\A").next()));
-    } finally {
-      scanner.close();
+              is(scanner.useDelimiter("\\A").next()));
     }
   }
 
